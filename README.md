@@ -1,192 +1,206 @@
-# Valley Fever patient grouping, by county
+# Valley Fever patient grouping
 
-This groups Arizona's 15 counties by Valley Fever (coccidioidomycosis) burden combined with
-social vulnerability. It pulls case counts and rates out of the Arizona Department of Health
-Services 2023 annual report, joins them to the CDC/ATSDR Social Vulnerability Index, and
-clusters the counties on the combined picture.
-
-## Why counties instead of patients
-
-The assignment is patient grouping, and I want to be upfront that this is not that. Individual
-Valley Fever case records are protected health information. They are not public, and I would
-need IRB approval and a data use agreement with ADHS to touch them.
-
-I had two options. I could generate synthetic patient records, or I could group the smallest
-real unit that is actually published. I went with real counties. Synthetic data would let me
-demonstrate a clustering pipeline, but every result it produced would be a property of my
-generator rather than a property of Valley Fever, and there would be no way to tell whether
-the method found anything. County level data is coarse, but it is real, and the SDOH variables
-attach to it cleanly because SVI is published at that geography. Ecological grouping like this
-is a normal first pass in spatial epidemiology when patient records are out of reach.
-
-The limitation that comes with it is the ecological fallacy. A cluster tells you something
-about counties, not about the people in them. A high vulnerability county contains plenty of
-people who are not vulnerable. I would not use these groupings to say anything about
-individual patients.
-
-## What it does
+This groups Valley Fever patients by their symptoms together with their social determinants of
+health, so that patients who are similar to each other end up in the same group and different
+from the other groups.
 
 ```bash
 pip install -r requirements.txt
 python run_analysis.py
 ```
 
-The pipeline runs in six steps, one module each under `src/`:
+## The patients are synthetic, and here is how I kept them honest
 
-1. `load_cases.py` pulls Table 2 out of the ADHS PDF. It finds the table by looking for a
-   header with both "county" and "case" in it rather than by page number, strips the thousands
-   separators and the footnote asterisks, and drops the statewide summary row that sits in the
-   same table as the counties.
-2. `load_svi.py` reads the SVI county file and keeps the overall score plus the four theme
-   scores. It converts the CDC's `-999` missing code to a real null so that an unavailable
-   score cannot quietly enter the model as a large negative number.
-3. `join_datasets.py` joins the two on county name. ADHS writes "Santa Cruz" where the SVI file
-   writes "Santa Cruz County", so names are normalized before matching. The join raises if
-   either side has a county the other does not, because a silent partial join would drop
-   counties from the clustering without saying so.
-4. `clustering.py` builds the model.
-5. `visualize.py` writes the plot.
-6. `evaluate.py` scores the result and writes the assessment.
+Individual Valley Fever case records are protected health information. They are not public, and
+using them would need IRB approval and a data use agreement with the Arizona Department of
+Health Services. So the patients here are generated.
 
-## How the code is put together
+The obvious risk with synthetic data is that you invent a pattern, find it again, and learn
+nothing. I tried to close that gap by grounding the parts that can be grounded in real published
+statistics.
 
-One module per pipeline stage, each one a function that takes a dataframe and returns a
-dataframe. No shared state and no object holding half finished results. That means any stage
-can be rerun or tested on its own, and you can read `join_datasets.py` without reading anything
-else first.
+Each patient is assigned to a county in proportion to that county's real 2023 case count, taken
+from the ADHS annual report. Maricopa produces about 72 percent of the synthetic patients
+because Maricopa reported about 73 percent of Arizona's actual cases. Each patient's social
+determinants are then drawn at that county's real published prevalence from the CDC Social
+Vulnerability Index. A patient from Yuma faces a 23.8 percent chance of not having finished high
+school because that is Yuma's actual rate.
 
-The loaders fail loudly rather than degrading. The join raises if either source contains a
-county the other does not, and the SVI loader raises if a score is missing. In a pipeline like
-this, silently dropping a county would corrupt every number downstream, so a crash is the
-cheaper failure.
+The result is a patient population whose social marginals match Arizona to within a point or
+two:
 
-Model settings live as named constants at the top of `clustering.py` rather than as literals
-scattered through the code, so changing the feature set or k is a one line edit. Deciding,
-judging and drawing are kept apart in `clustering.py`, `evaluate.py` and `visualize.py`, which
-means swapping the algorithm does not touch the plotting code.
+| Determinant | Synthetic | Real Arizona |
+|---|---|---|
+| Housing cost burdened | 28.2% | 26.3% |
+| Unemployed | 6.0% | 5.2% |
+| No high school diploma | 11.5% | 11.0% |
+| Limited social support | 6.8% | 6.2% |
+| Uninsured | 11.5% | 10.7% |
+| No vehicle | 6.2% | 5.3% |
 
-One detail worth calling out: the PDF table is located by looking for a header containing both
-"county" and "case", not by page and row index. Next year's report will move things around, and
-keyword matching survives that where hardcoded positions would not.
+Two things are not grounded, and I would rather name them than let them pass.
 
-## The features, and one choice worth explaining
+The link from social barriers to later presentation and worse disease is my assumption. The
+direction is well supported in the care access literature, but the specific numbers are mine and
+none of it is estimated from Valley Fever data. Every clinical pattern the clustering finds is a
+pattern I put there.
 
-The model uses five features: the four SVI theme percentiles, plus the 2018 to 2022 average
-case rate per 100,000.
+Social support has no direct measure in the SVI, so single parent households stands in for it.
+That is the weakest link in the mapping and I would replace it first given real data.
 
-I left the overall SVI score out of the model even though the loader keeps it. It is a rank
-composite of the same four themes, so including both would count vulnerability twice against
-a single burden measure. It stays in the output tables because it is easier to read than four
-separate percentiles.
+One modelling choice worth explaining. The six determinants are drawn correlated rather than
+independently, through a shared per patient disadvantage term. Drawn independently, the average
+patient carries 0.65 barriers and facing four or more becomes effectively impossible, which
+deletes the group the whole exercise is about. Real barriers co-occur in the same person:
+someone unemployed is more likely to be uninsured. The correlation leaves each county's marginal
+prevalence unchanged and only changes how barriers stack up within a patient.
 
-I used the five year average case rate rather than the 2023 rate. The ADHS report itself warns
-that rates built on fewer than 20 cases move on random variation, and Greenlee shows exactly
-why. Seven cases in 2023 produced a rate of 72.4 against a five year average of 20.5. That is
-a three fold swing driven by a handful of cases. Both rates are reported, but the multi year
-average is the more honest measure of a county's actual burden.
+## The features
 
-I also want to flag that I clustered on rates, not case counts. Maricopa reports 7,993 cases
-and Greenlee reports 7, but that difference is almost entirely population size. Clustering on
-counts would have produced a model that separates big counties from small ones.
+Thirteen features, both halves of what the brief describes.
 
-## The clustering algorithm and why I picked it
+Symptoms: days from onset to diagnosis, cough duration, fatigue score, fever, chest pain, weight
+loss, disseminated disease.
 
-Final model is Ward hierarchical clustering at k=3.
+Social determinants: housing cost burden, unemployment, education, social support, uninsured
+status, no vehicle access. The last two are both access to care, kept separate because they are
+different barriers and one patient can face either independently.
 
-I ran K-means and Ward across k from 2 to 5 and compared them on silhouette and on how far the
-two partitions agreed:
+Everything is standardized before clustering. Days to diagnosis runs into the hundreds while the
+determinants are 0 or 1, so without scaling the distance would be almost entirely the diagnosis
+delay.
 
-| k | K-means silhouette | Ward silhouette | Agreement (ARI) |
-|---|---|---|---|
-| 2 | 0.291 | 0.303 | 0.731 |
-| 3 | 0.251 | 0.251 | 1.000 |
-| 4 | 0.253 | 0.253 | 0.784 |
-| 5 | 0.273 | 0.273 | 1.000 |
+The generator also records which latent group each patient came from. That column is deliberately
+not a clustering feature. It exists so the evaluation can ask whether the algorithm found the
+structure that is actually there.
 
-At k=3 the two algorithms return the identical partition. Adjusted Rand index is 1.000 and the
-silhouette scores match to three decimals, meaning not one county is assigned differently. So
-the algorithm choice does not change the answer here. Given that tie, I kept Ward because it is
-deterministic. K-means depends on random initialization, and I would rather the result not
-depend on a seed. Two unrelated algorithms landing on the same grouping is also mild evidence
-that the structure is in the data rather than an artifact of one method.
+## How the code is organized
 
-On k, I should be straight about the tradeoff. Silhouette actually peaks at k=2, at 0.303
-against 0.251. But that two way split only pulls out the four high vulnerability counties and
-flattens the entire burden gradient, which is half of what I am trying to group on. k=3
-recovers a distinct high burden group and costs about 0.05 of silhouette. k=4 scores the same
-as k=3 and only splits off a two county fragment. I took the interpretable split over the
-marginally better score, and I would rather state that plainly than present k=3 as the
-obvious winner.
+One module per stage under `src/`, each a function that takes a dataframe and returns a
+dataframe. No shared state, no object holding half finished results, so any stage can be rerun
+or read on its own.
 
-## What the clusters look like
+`load_cases.py` and `load_svi.py` pull the real county numbers that ground the generator,
+`generate_patients.py` builds the patient table, `cluster_patients.py` fits and compares models,
+`visualize_patients.py` draws, and `run_analysis.py` orchestrates. Deciding, drawing and judging
+are kept apart, so swapping the algorithm does not touch the plotting code. Model settings are
+named constants at the top of `cluster_patients.py` rather than literals buried in the code, so
+changing the feature set or k is a one line edit.
 
-| Cluster | Counties | Avg rate, 2018 to 2022 | Avg overall SVI | 2023 cases |
+The loaders fail loudly rather than degrading. The SVI loader converts the CDC `-999` missing
+code to a real null and then raises, because a missing rate would otherwise become a missing
+barrier probability and quietly generate patients from an incomplete county. The two sources also
+disagree on naming, "Santa Cruz County" against "Santa Cruz", so names are normalized in the
+loader before any county is looked up.
+
+One detail worth calling out: the case table is located in the PDF by looking for a header
+containing both "county" and "case", not by page and row index. Next year's report will move
+things around, and keyword matching survives that where hardcoded positions would not.
+
+## The algorithm, and why silhouette would have picked wrong
+
+Final model is K-means at k=3. I compared it against Ward hierarchical clustering across k from
+2 to 6.
+
+| k | K-means silhouette | Ward silhouette | K-means recovery | Ward recovery |
 |---|---|---|---|---|
-| 1, high burden | La Paz, Maricopa, Pinal | 163.1 | 0.36 | 9,012 |
-| 2, moderate burden | Cochise, Coconino, Gila, Graham, Greenlee, Mohave, Pima, Yavapai | 61.3 | 0.35 | 1,778 |
-| 3, high vulnerability, lower burden | Apache, Navajo, Santa Cruz, Yuma | 42.6 | 0.89 | 200 |
+| 2 | 0.403 | 0.285 | 0.426 | 0.780 |
+| 3 | 0.251 | 0.295 | **0.960** | 0.793 |
+| 4 | 0.264 | 0.307 | 0.916 | 0.806 |
+| 5 | 0.287 | 0.316 | 0.854 | 0.810 |
+| 6 | 0.204 | 0.287 | 0.569 | 0.798 |
 
-![County clusters](results/county_clusters.png)
+Recovery is the adjusted Rand index against the latent groups the data was generated from. It is
+only computable because the data is synthetic, and it is the closest thing to a right answer this
+exercise has.
 
-The left panel shows the clusters in PCA space across all five features. The right panel plots
-overall vulnerability against case rate directly, which is the view I would actually put in
-front of a public health reader.
+Two things fall out of that table.
+
+Ward scores slightly better on silhouette at k=3, 0.295 against 0.251, but K-means recovers the
+true groups far better, 0.960 against 0.793. Since the point is to find the real groups, and this
+is the one case where that can be measured, I decided on recovery. Silhouette only asks whether
+the clusters are geometrically tidy, not whether they are right.
+
+More importantly, silhouette alone would have chosen k=2, where it peaks at 0.403 and recovery
+collapses to 0.426. Merging the single barrier and multiple barrier patients into one blob is
+neater to look at and clinically useless. That gap is the entire argument for not treating an
+internal metric as a verdict.
+
+## What the groups look like
+
+| Cluster | Patients | Days to diagnosis | Fatigue | Disseminated | Avg barriers | Uninsured |
+|---|---|---|---|---|---|---|
+| 1, latest presentation | 192 | 83.9 | 7.5/10 | 9.4% | 2.56 | 47% |
+| 2, intermediate | 347 | 48.3 | 5.6/10 | 3.2% | 0.99 | 14% |
+| 3, earliest presentation | 661 | 20.5 | 2.9/10 | 1.5% | 0.01 | 0% |
+
+![Patient clusters](results/patient_clusters.png)
 
 Terminal output from a full run is in [results/terminal_output.png](results/terminal_output.png).
-Cluster assignments are written to `results/cluster_assignments.csv`.
+Per patient assignments are in `results/patient_clusters.csv`.
 
-## How I evaluated it, and what I think it shows
+## How I would evaluate the quality and usefulness
 
-Silhouette for the final model is 0.251. That is loose. It says there is real structure but the
-counties do not fall into cleanly separated groups, which is roughly what I would expect from
-15 units and social variables that vary continuously.
+Quality and usefulness are separate questions and I think they deserve separate answers.
 
-The more useful check was correlating burden against vulnerability across all 15 counties. It
-comes out at r = -0.31 with p = 0.27. So the relationship is slightly negative and, at this
-sample size, not distinguishable from no relationship at all.
+For quality, I used two measures that disagree, which is the useful part. Silhouette is 0.251,
+which is loose. Recovery against the known groups is 0.960, which is near exact. Both are true at
+once. The groups sit along a gradient rather than in separate lumps, so they overlap at the edges
+while still being the right groups. Silhouette is measuring compactness and reading a gradient as
+a weak result.
 
-That is the finding, and it is a negative one. High vulnerability and high case rate counties
-do not group together in Arizona. The highest burden cluster is La Paz, Maricopa and Pinal.
-The four most socially vulnerable counties are Apache, Navajo, Santa Cruz and Yuma. Those two
-sets do not overlap at all. Valley Fever exposure follows the dry desert corridor through
-Maricopa, Pinal and Pima more than it follows social disadvantage.
+On real patient data only the silhouette number would be available. Taken alone it would suggest
+the grouping barely worked, when in fact it recovered the structure almost perfectly. That is the
+practical lesson I would carry into real data: internal metrics are a sanity check, not a verdict,
+and they should be read alongside whether the groups differ on things you did not cluster on.
 
-I think that makes the grouping useful, just not for the targeting exercise someone might have
-expected. A program allocating by vulnerability alone would miss most of the case load. One
-allocating by case rate alone would concentrate on relatively less vulnerable counties. Keeping
-both axes visible is the point.
+For usefulness, the test is whether the groups suggest different actions. These do. The latest
+presenting cluster waits about three times as long for a diagnosis as the earliest, and carries
+roughly six times the rate of disseminated disease. It is also the cluster where nearly half the
+patients are uninsured. A clinic could act on that: patients presenting with two or more barriers
+are the ones to reach earlier, and the group is large enough to matter at 16 percent of patients.
 
-Two caveats I would not want to lose. Fifteen counties is a very small sample, and with n=15
-almost nothing here reaches significance, so treat the correlation as a direction and not a
-result. And Valley Fever is known to be underdiagnosed, so case rates partly reflect testing
-practice rather than true incidence. If testing is more available in wealthier counties, that
-would bias the rates in exactly the direction that would produce this negative correlation on
-its own. I cannot separate those two explanations with this data.
+The honest caveat is that I built the barrier to delay relationship into the generator, so this
+demonstrates that the method finds such a relationship when it exists. It is not evidence that
+Arizona patients behave this way. Establishing that needs real records.
 
-## What it would take to make this a real research tool
+## One thing the county data ruled out
 
-Patient level case records through an IRB protocol and a data use agreement with ADHS. That is
-the change that would matter most, because it would turn this from county grouping into actual
-patient grouping and would remove the ecological fallacy problem.
+While checking the county numbers I looked at whether Valley Fever burden and social
+vulnerability move together across Arizona's 15 counties. They do not. The correlation is
+slightly negative, r = -0.31 with p = 0.27, and the highest burden counties (La Paz, Maricopa,
+Pinal) do not overlap at all with the four most socially vulnerable (Apache, Navajo, Santa Cruz,
+Yuma). Valley Fever exposure follows the dry desert corridor more than it follows disadvantage.
 
-Finer SDOH geography. SVI is published at census tract level, and Maricopa County alone holds
-over four million people. Tract level would let the model see variation that county averages
-erase completely.
+With 15 counties that is a direction rather than a finding, and underdiagnosis in poorer counties
+could produce the same pattern on its own. But it settled one design question. I do not assume
+vulnerability drives infection, so the generator does not link a patient's barriers to whether
+they got sick. Barriers affect how late they present and how sick they are by then, which is a
+different claim and the only one I make.
 
-Longitudinal case data rather than one report year. Several years of counts would separate
-counties with persistently high burden from ones having a bad year, and would let me model
-the environmental drivers, dust exposure and soil disruption and rainfall, that probably
-explain more of the pattern than anything in SVI does.
+## What this would need to become a real research tool
 
-Testing and diagnosis rates by county, so the underdiagnosis problem above could be adjusted
-for instead of just noted.
+Real patient records through an IRB protocol and a data use agreement with ADHS. That is the
+change that matters most, because it would replace the one assumption doing real work here, the
+link from barriers to delayed presentation, with something measured.
+
+Symptom data recorded at presentation rather than modelled. Real symptom profiles are messier
+than the ones here, with comorbidities and missing fields that would change which features are
+usable.
+
+A better measure of social support. Single parent households is a poor proxy and real research
+would use something asked directly.
+
+Longitudinal follow up, so that groups could be validated against outcomes rather than against
+the structure they were generated from. The strongest evidence a grouping is useful is that the
+groups go on to differ in ways nobody clustered on.
 
 ## Data sources
 
 - Arizona Department of Health Services, Valley Fever 2023 Annual Report. `data/valley-fever-2023.pdf`
-- CDC/ATSDR Social Vulnerability Index, Arizona county file. `data/Arizona_county.csv`. This is
-  the most recent release available at download time. The CSV itself does not carry a vintage
-  column, so if the release year matters for citation it is worth confirming against the CDC
-  download page rather than taking it from the file.
+- CDC/ATSDR Social Vulnerability Index, Arizona county file. `data/Arizona_county.csv`. The CSV
+  carries no vintage column, so confirm the release year against the CDC download page if it
+  matters for citation.
 
-Both are public. Nothing here contains individual level data.
+Both are public. No individual level data is used anywhere, and no real patient records are
+involved.
