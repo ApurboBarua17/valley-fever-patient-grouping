@@ -9,11 +9,7 @@ pip install -r requirements.txt
 python run_analysis.py
 ```
 
-## The patients are synthetic, and here is how I kept them honest
-
-Individual Valley Fever case records are protected health information. They are not public, and
-using them would need IRB approval and a data use agreement with the Arizona Department of
-Health Services. So the patients here are generated.
+## The patients are synthetic
 
 The obvious risk with synthetic data is that you invent a pattern, find it again, and learn
 nothing. I tried to close that gap by grounding the parts that can be grounded in real published
