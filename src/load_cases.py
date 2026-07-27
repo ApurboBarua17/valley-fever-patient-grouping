@@ -1,19 +1,23 @@
-"""Extract the county-level Valley Fever case table from the ADHS annual report PDF."""
+"""Extract the county case counts from the ADHS Valley Fever annual report PDF.
+
+The counts set how many synthetic patients come from each county, so that the
+patient population is distributed the way Arizona's real cases are.
+"""
 
 import re
 
 import pandas as pd
 import pdfplumber
 
-# A statewide summary row sits inside the same table and would skew every average.
+# A statewide summary row sits inside the same table and would skew the weights.
 STATEWIDE_ROW_LABEL = "arizona"
 
-# Strips thousands separators and the asterisks ADHS puts on small count rates.
+# Counts are printed with thousands separators, as in "7,993".
 NUMERIC_NOISE = re.compile(r"[^0-9.]")
 
 
 def _find_column_indexes(header_row):
-    """Locate the four columns we need, by keyword so a renamed header still resolves."""
+    """Locate the county and case columns, by keyword so a renamed header still resolves."""
     indexes = {}
     for position, raw_header in enumerate(header_row):
         header = (raw_header or "").lower()
@@ -21,12 +25,8 @@ def _find_column_indexes(header_row):
             indexes["county"] = position
         elif "case" in header:
             indexes["cases"] = position
-        elif "avg" in header:
-            indexes["rate_5yr_avg"] = position
-        elif "rate" in header:
-            indexes["rate_2023"] = position
 
-    missing = {"county", "cases", "rate_2023", "rate_5yr_avg"} - set(indexes)
+    missing = {"county", "cases"} - set(indexes)
     if missing:
         raise ValueError(f"Could not locate columns {sorted(missing)} in header {header_row}")
     return indexes
@@ -41,7 +41,7 @@ def _looks_like_county_table(table):
 
 
 def _to_number(raw_value):
-    """Strip thousands separators and footnote markers, then convert to float."""
+    """Strip separators and footnote markers, then convert to a number."""
     if raw_value is None:
         return None
     cleaned = NUMERIC_NOISE.sub("", raw_value)
@@ -51,10 +51,7 @@ def _to_number(raw_value):
 
 
 def load_case_data(pdf_path):
-    """Return one row per Arizona county with case count and rates per 100,000.
-
-    Columns: county, cases, rate_2023, rate_5yr_avg.
-    """
+    """Return one row per Arizona county with its 2023 reported case count."""
     county_table = None
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
@@ -82,17 +79,17 @@ def load_case_data(pdf_path):
             {
                 "county": county_name,
                 "cases": _to_number(row[column_index["cases"]]),
-                "rate_2023": _to_number(row[column_index["rate_2023"]]),
-                "rate_5yr_avg": _to_number(row[column_index["rate_5yr_avg"]]),
             }
         )
 
     case_data = pd.DataFrame(records)
+
+    # A county that failed to parse would silently get zero patients.
+    if case_data["cases"].isna().any():
+        unusable = case_data.loc[case_data["cases"].isna(), "county"].tolist()
+        raise ValueError(f"Case counts failed to parse for: {unusable}")
+
     case_data["cases"] = case_data["cases"].astype(int)
-
-    if case_data[["cases", "rate_2023", "rate_5yr_avg"]].isna().any().any():
-        raise ValueError("Some case values failed to parse out of the PDF table")
-
     return case_data.sort_values("county").reset_index(drop=True)
 
 

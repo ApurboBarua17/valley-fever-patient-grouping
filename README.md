@@ -160,37 +160,6 @@ The honest caveat is that I built the barrier to delay relationship into the gen
 demonstrates that the method finds such a relationship when it exists. It is not evidence that
 Arizona patients behave this way. Establishing that needs real records.
 
-## One thing the county data ruled out
-
-While checking the county numbers I looked at whether Valley Fever burden and social
-vulnerability move together across Arizona's 15 counties. They do not. The correlation is
-slightly negative, r = -0.31 with p = 0.27, and the highest burden counties (La Paz, Maricopa,
-Pinal) do not overlap at all with the four most socially vulnerable (Apache, Navajo, Santa Cruz,
-Yuma). Valley Fever exposure follows the dry desert corridor more than it follows disadvantage.
-
-With 15 counties that is a direction rather than a finding, and underdiagnosis in poorer counties
-could produce the same pattern on its own. But it settled one design question. I do not assume
-vulnerability drives infection, so the generator does not link a patient's barriers to whether
-they got sick. Barriers affect how late they present and how sick they are by then, which is a
-different claim and the only one I make.
-
-## What this would need to become a real research tool
-
-Real patient records through an IRB protocol and a data use agreement with ADHS. That is the
-change that matters most, because it would replace the one assumption doing real work here, the
-link from barriers to delayed presentation, with something measured.
-
-Symptom data recorded at presentation rather than modelled. Real symptom profiles are messier
-than the ones here, with comorbidities and missing fields that would change which features are
-usable.
-
-A better measure of social support. Single parent households is a poor proxy and real research
-would use something asked directly.
-
-Longitudinal follow up, so that groups could be validated against outcomes rather than against
-the structure they were generated from. The strongest evidence a grouping is useful is that the
-groups go on to differ in ways nobody clustered on.
-
 ## Data sources
 
 - Arizona Department of Health Services, Valley Fever 2023 Annual Report. `data/valley-fever-2023.pdf`

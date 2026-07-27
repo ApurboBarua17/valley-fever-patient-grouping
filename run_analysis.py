@@ -115,7 +115,7 @@ def main():
     )
 
     labelled_patients.to_csv(RESULTS_DIR / "patient_clusters.csv", index=False)
-    print(f"\nSaved results/patient_clusters.csv\n")
+    print("\nSaved results/patient_clusters.csv\n")
 
 
 if __name__ == "__main__":
