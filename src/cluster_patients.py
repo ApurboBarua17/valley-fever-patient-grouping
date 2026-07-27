@@ -68,20 +68,9 @@ def _relabel_by_severity(labels, patients):
     return [new_number[label] for label in labels]
 
 
-# K-means at k=3, chosen on recovery rather than on silhouette.
-#
-# Ward scores slightly better on silhouette at k=3 (0.295 against 0.251) but
-# K-means recovers the known groups far better (adjusted Rand 0.960 against
-# 0.793). Since the point of the exercise is to find the real groups, and the
-# synthetic data is the one case where that can be measured directly, recovery
-# is the metric worth deciding on. Silhouette only asks whether the clusters are
-# tidy, not whether they are right.
-#
-# Worth stating plainly: silhouette alone would have picked the wrong k here. It
-# peaks at k=2 (0.403), where recovery collapses to 0.426, because merging the
-# single barrier and multiple barrier patients into one blob is geometrically
-# neater and clinically useless. That gap is the whole argument for not trusting
-# an internal metric on its own.
+# K-means at k=3, chosen on recovery of the known groups rather than on
+# silhouette. Silhouette prefers Ward, and prefers k=2, and is wrong on both
+# counts here. compare_algorithms prints the figures on every run.
 SELECTED_K = 3
 
 

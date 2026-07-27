@@ -2,11 +2,8 @@
 
 import pandas as pd
 
-# County prevalences for the five social determinants the brief names. These are
-# real published percentages, which is what lets the synthetic patients in
-# generate_patients.py carry marginals that match Arizona rather than invented
-# ones. Social support has no direct SVI measure, so single parent households
-# stands in for it, which is a proxy and the weakest link in this mapping.
+# County prevalences for the five determinants the brief names. Social support has
+# no direct SVI measure, so single parent households stands in for it.
 SDOH_RATE_COLUMNS = {
     "COUNTY": "county",
     "EP_HBURD": "housing_cost_burden_pct",

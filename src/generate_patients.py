@@ -1,17 +1,11 @@
 """Build a synthetic patient table grounded in real Arizona statistics.
 
-Individual Valley Fever records are protected and not public, so the patients
-here are generated. Two things keep them from being arbitrary. Each patient is
-assigned to a county in proportion to that county's real 2023 case count, so the
-patient population is distributed the way Arizona's actual cases are. Each
-patient's social determinants are then drawn at that county's real published
-prevalence, so the marginals match Arizona rather than being invented.
+Counties are assigned in proportion to real 2023 case counts, and social
+determinants are drawn at each county's real published prevalence, so the
+marginals match Arizona rather than being invented.
 
-The one thing that is genuinely assumed is the link from access barriers to
-delayed presentation and worse disease. That direction is well supported in the
-care access literature, but the specific numbers below are mine, and no part of
-it is estimated from Valley Fever data. Every clinical pattern the clustering
-finds is therefore a pattern I put in.
+The link from access barriers to delayed presentation is assumed, not measured.
+Every clinical pattern the clustering finds is therefore one that was put here.
 """
 
 import numpy as np
@@ -57,12 +51,9 @@ SDOH_SOURCE_RATES = {
     "no_vehicle": "no_vehicle_pct",
 }
 
-# Cutoffs separating the three latent patient types, so the synthetic data has a
-# known answer to check the clustering against. Set at one and two because that
-# is where this population actually divides: most patients face no barrier at
-# all, and facing two or more compounding barriers is both meaningful and common
-# enough to form a group. Cutting at four instead put 2 percent of patients in
-# the group that matters most, which is not a group, it is a rounding error.
+# Cutoffs for the three latent types, so the data has a known answer to check
+# against. One and two because that is where this population divides. At four the
+# high barrier group came out at 2 percent, too small to be a group at all.
 MODERATE_BARRIER_CUTOFF = 1
 HIGH_BARRIER_CUTOFF = 2
 
@@ -72,9 +63,8 @@ BARRIER_GROUP_NAMES = {
     2: "multiple barriers",
 }
 
-# Symptom parameters by latent group, in order: low, moderate, high barrier.
-# The progression encodes the assumption stated at the top of this file, that
-# patients facing more barriers present later and sicker.
+# Symptom parameters by latent group, in order of increasing barrier burden. The
+# progression is the assumption stated at the top of this file.
 MEAN_DAYS_TO_DIAGNOSIS = [21.0, 48.0, 82.0]
 MEAN_COUGH_WEEKS = [2.5, 5.0, 8.5]
 MEAN_FATIGUE_SCORE = [3.0, 5.5, 7.5]
